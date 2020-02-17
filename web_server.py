@@ -18,7 +18,7 @@ IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 or implied.
 
 """
-
+import json
 import logging
 from threading import Thread
 
@@ -28,9 +28,13 @@ from h_s_classes.snow import Snow
 from flask import Flask
 from flask import jsonify
 from flask import request
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+auth = HTTPBasicAuth()
 
+users = {"cisco": "cisco", "crosswork": generate_password_hash("crosswork"), "cisco": generate_password_hash("cisco")}
 
 def thread_worker(alert):
     """Processes alerts and creates Service Now ticket
@@ -55,7 +59,7 @@ def thread_worker(alert):
     results = my_health_insights.parse_alert_body(alert)
 
     if results:
-        my_snow = Snow(username='admin', password='XXX', url='https://dev82732.service-now.com')
+        my_snow = Snow(username='admin', password='2LbDLd2AlSnb', url='https://dev83527.service-now.com/')
         for i in results:
             if i['state'] != 'clear':
                 my_snow.post(api_path='/api/now/table/x_397387_cw_alerts_alert_table', body_data=i)
@@ -64,8 +68,15 @@ def thread_worker(alert):
         return
     return
 
+@auth.verify_password
+def verify_password(username, password):
+    if username in users:
+        return check_password_hash(users.get(username), password)
+    return False
+
 
 @app.route('/health_to_snow', methods=['GET', 'POST'])
+@auth.login_required
 def health_to_snow():
     """Flask web server receives http requests and executes worker thread if needed
 
@@ -90,8 +101,13 @@ def health_to_snow():
         return reply
     elif request.method == 'POST':
         data = request.json
+        # checking the structure of the alert
+        fp = open('LATESTPAYLOAD.txt', 'w')
+        fp.write(json.dumps(data))
+        fp.close()
         try:
-            if data[0]['series'][0]['name'] == 'alerts' and data[0]['series'][0]['tags']:
+            # changing to dictionary
+            if data['series'][0]['name'] == 'alerts' and data['series'][0]['tags']:
                 Thread(target=thread_worker, args=(data,)).start()
         except ValueError:
             logger.warning('Malformed body format in POST from {ip}. / Received body was {body}'
@@ -104,4 +120,4 @@ if __name__ == '__main__':
     logging.basicConfig(handlers=[
         logging.StreamHandler()], format=FORMAT, level=logging.INFO)
 
-    app.run(host='127.0.0.1', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
